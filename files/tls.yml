@@ -1,0 +1,11 @@
+tls:
+  stores:
+    default:
+      defaultCertificate:
+        certFile: /home/appuser/data/cert.crt
+        keyFile: /home/appuser/data/cert.key
+  certificates:
+    - certFile: /home/appuser/data/cert.crt
+      keyFile: /home/appuser/data/cert.key
+      stores:
+        - default

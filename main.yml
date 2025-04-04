@@ -1,0 +1,252 @@
+---
+- name: Configura Orange PI zero3
+  hosts: op
+  become: true
+  vars_files:
+    - vars/main.yml
+  tasks:
+    - name: Get all files in /etc/ssh/sshd_config.d
+      ansible.builtin.find:
+        path: /etc/ssh/sshd_config.d
+        recurse: false
+        file_type: any
+      register: sshd_config_d_files
+
+    - name: Delete files in /etc/ssh/sshd_config.d
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      with_items: "{{ sshd_config_d_files.files }}"
+      notify: Restart SSH service
+
+    - name: Configure SSH
+      ansible.builtin.copy:
+        src: sshd_config
+        dest: /etc/ssh/sshd_config
+        owner: root
+        group: root
+        mode: "0644"
+      notify: Restart SSH service
+
+    - name: Remove old versions
+      ansible.builtin.apt:
+        name:
+          - docker
+          - docker-engine
+          - docker.io
+          - containerd
+          - runc
+        state: absent
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - gnupg
+          - lsb-release
+
+    - name: Add Docker's official GPG key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        dest: /usr/share/keyrings/docker-archive-keyring.gpg.old
+        mode: "0644"
+      notify: Dearmor Docker official GPG key
+
+    - name: Run handlers
+      ansible.builtin.meta: flush_handlers
+
+    - name: Add Docker's repository
+    #   ansible.builtin.apt_repository:
+    #     repo: deb [arch=arm64 signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu \
+    #       {{ ansible_distribution_release }} stable
+    #     state: present
+    #     filename: docker
+      ansible.builtin.template:
+        src: docker.list.j2
+        dest: /etc/apt/sources.list.d/docker.list
+        mode: "0644"
+
+    # - name: Enable KVM module
+    #   community.general.modprobe:
+    #     name: kvm
+    #     state: present
+
+    - name: Install Docker
+      ansible.builtin.apt:
+        name:
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-compose-plugin
+        update_cache: true
+        state: present
+
+    - name: Install Python Package required
+      ansible.builtin.apt:
+        name:
+          - python3-pip
+          - python3-docker
+      tags: portainer
+
+    - name: Create folder to traefik configuration
+      ansible.builtin.file:
+        path: /home/ebenezer/traefik
+        state: directory
+        mode: "0755"
+      tags: traefik
+
+    - name: Copy tls configuration file
+      ansible.builtin.copy:
+        src: tls.yml
+        dest: /home/ebenezer/traefik/
+        mode: "0644"
+      tags: traefik
+
+    - name: Copy private key
+      ansible.builtin.copy:
+        src: traefik.key
+        dest: /home/ebenezer/traefik/cert.key
+        mode: "0600"
+      tags: traefik
+
+    - name: Copy self-signed certificate
+      ansible.builtin.copy:
+        src: traefik.crt
+        dest: /home/ebenezer/traefik/cert.crt
+        mode: "0644"
+      tags: traefik
+
+    - name: Create network for traefik
+      community.docker.docker_network:
+        name: traefik
+        driver: bridge
+      tags:
+        - traefik
+        - portainer
+
+    - name: Create container traefik
+      community.docker.docker_container:
+        name: traefik
+        image: traefik:v3.3
+        hostname: traefik
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - /etc/localtime:/etc/localtime:ro
+          - /home/ebenezer/traefik:/home/appuser/data
+        restart_policy: unless-stopped
+        networks:
+          - name: traefik
+        command:
+          --api.insecure=true
+          --providers.docker
+          --entrypoints.web.address=:80
+          --entrypoints.web.http.redirections.entryPoint.to=websecure
+          --entrypoints.web.http.redirections.entryPoint.scheme=https
+          --entrypoints.web.http.redirections.entrypoint.permanent=true
+          --entrypoints.websecure.address=:443
+          --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
+          --entrypoints.websecure.transport.respondingTimeouts.idleTimeout=600s
+          --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=600s
+          --providers.file.filename=/home/appuser/data/tls.yml
+          --log.level=DEBUG
+          --api.debug=true
+        ports:
+          # The HTTP port
+          - "80:80"
+          # The HTTPS port
+          - "443:443"
+          # The Web UI (enabled by --api.insecure=true)
+          # - "8080:8080"
+        labels:
+          # "traefik.enable=false"
+          traefik.enable: "true"
+          traefik.http.routers.traefik.entrypoints: websecure
+          traefik.http.routers.traefik.rule: Host(`traefik.home.local`)
+          traefik.http.routers.traefik.tls: "true"
+          traefik.http.routers.traefik.service: traefik
+          traefik.http.services.traefik.loadbalancer.server.port: 8080
+          traefik.docker.network: traefik
+        state: started
+        recreate: true
+      tags: traefik
+
+    - name: Create folder to CoreDNS
+      ansible.builtin.file:
+        path: /home/ebenezer/coredns
+        state: directory
+        mode: "0755"
+      tags: coredns
+
+    - name: Copy file Corefile to CoreDNS
+      ansible.builtin.copy:
+        src: Corefile
+        dest: /home/ebenezer/coredns/
+        mode: "0644"
+      tags: coredns
+
+    - name: Copy file db.home.local to CoreDNS
+      ansible.builtin.template:
+        src: db.home.local.j2
+        dest: /home/ebenezer/coredns/db.home.local
+        mode: "0644"
+      tags: coredns
+
+    - name: Create container CoreDNS
+      community.docker.docker_container:
+        name: coredns
+        image: coredns/coredns:latest
+        hostname: coredns
+        volumes:
+          - /home/ebenezer/coredns/Corefile:/etc/coredns/Corefile
+          - /home/ebenezer/coredns/db.home.local:/etc/coredns/db.home.local
+        restart_policy: unless-stopped
+        command:
+          -conf /etc/coredns/Corefile -dns.port 53
+        ports:
+          - "{{ ansible_tailscale0.ipv4.address }}:53:53"
+          - "{{ ansible_tailscale0.ipv4.address }}:53:53/udp"
+          - "8000:8080"
+        state: started
+        recreate: true
+      tags:
+        - coredns
+
+    - name: Create docker volume for portainer
+      community.docker.docker_volume:
+        name: portainer_data
+      tags: portainer
+
+    - name: Create container portainer
+      community.docker.docker_container:
+        name: portainer
+        image: portainer/portainer-ce:{{ portainer_install_version }}
+        volumes:
+          - /var/run/docker.sock:/var/run/docker.sock
+          - portainer_data:/data
+        restart_policy: unless-stopped
+        state: started
+        # command: --admin-password='{{ portainer_install_admin_password | password_hash('bcrypt') }}'
+        networks:
+          - name: traefik
+        labels:
+          traefik.enable: "true"
+          traefik.http.routers.portainer.entrypoints: websecure
+          traefik.http.routers.portainer.rule: Host(`portainer.home.local`)
+          traefik.http.routers.portainer.tls: "true"
+          traefik.http.routers.portainer.service: portainer
+          traefik.http.services.portainer.loadbalancer.server.port: 9000
+          traefik.docker.network: traefik
+        # recreate: true
+      tags: portainer
+  handlers:
+    - name: Restart SSH service
+      ansible.builtin.systemd:
+        name: ssh
+        state: restarted
+        daemon_reload: true
+
+    - name: Dearmor Docker official GPG key
+      ansible.builtin.command: gpg --batch --yes --dearmor --output docker-archive-keyring.gpg docker-archive-keyring.gpg.old
+      args:
+        chdir: /usr/share/keyrings
+      changed_when: true

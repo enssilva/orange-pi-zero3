@@ -1,0 +1,12 @@
+$ORIGIN home.local.
+$TTL 3h
+@           IN  SOA dns.home.local. eu.home.local. 1743094860 7200 3600 1209600 3600
+
+@           IN  A       {{ ansible_tailscale0.ipv4.address }}
+dns         IN  CNAME   @
+vw          IN  CNAME   @
+immich      IN  CNAME   @
+pdf         IN  CNAME   @
+joplin      IN  CNAME   @
+portainer   IN  CNAME   @
+traefik     IN  CNAME   @

@@ -1,0 +1,42 @@
+name: joplin
+
+services:
+  joplin:
+    image: florider89/joplin-server:latest
+    container_name: joplin
+    restart: always
+    depends_on:
+      - db
+    env_file:
+      - stack.env
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.joplin.entrypoints=websecure
+      - traefik.http.routers.joplin.rule=Host(`joplin.home.local`)
+      - traefik.http.routers.joplin.tls=true
+      - traefik.http.routers.joplin.service=joplin
+      - traefik.http.services.joplin.loadbalancer.server.port=22300
+      - traefik.docker.network=traefik
+    networks:
+      - traefik
+      - backend
+
+  db:
+    image: postgres:15
+    container_name: joplin_db
+    volumes:
+      - /home/ebenezer/joplindb:/var/lib/postgresql/data
+    restart: unless-stopped
+    env_file:
+      - stack.env
+    networks:
+      - backend
+    labels:
+      - traefik.enable=false
+
+networks:
+  traefik:
+    name: traefik
+    external: true
+  backend:
+    internal: true

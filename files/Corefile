@@ -1,0 +1,12 @@
+.:53 {
+    forward . 8.8.8.8 8.8.4.4
+    log
+    errors
+    health :8000
+}
+
+home.local:53 {
+    file /etc/coredns/db.home.local
+    log
+    errors
+}

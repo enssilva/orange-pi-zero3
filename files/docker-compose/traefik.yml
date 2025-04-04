@@ -1,0 +1,39 @@
+name: traefik
+
+services:
+  reverse-proxy:
+    image: traefik:v3.3
+    restart: unless-stopped
+    # Enables the web UI and tells Traefik to listen to docker
+    command:
+      --api.insecure=true
+      --providers.docker
+      --entrypoints.web.address=:80
+      --entrypoints.websecure.address=:443
+      --entrypoints.websecure.transport.respondingTimeouts.readTimeout=600s
+      --entrypoints.websecure.transport.respondingTimeouts.idleTimeout=600s
+      --entrypoints.websecure.transport.respondingTimeouts.writeTimeout=600s
+      --providers.file.filename=/home/appuser/data/tls.yml
+      # --log.level=DEBUG
+      # --api.debug=true
+    ports:
+      # The HTTP port
+      - "80:80"
+      # The HTTPS port
+      - "443:443"
+      # The Web UI (enabled by --api.insecure=true)
+      - "8080:8080"
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ebenezer/traefik:/home/appuser/data
+      - /etc/localtime:/etc/localtime:ro
+    labels:
+      - traefik.enable=false
+    networks:
+      - default
+
+networks:
+  default:
+    driver: bridge
+    name: traefik

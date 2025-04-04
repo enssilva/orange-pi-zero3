@@ -1,0 +1,15 @@
+name: coredns
+
+services:
+  coredns:
+    image: coredns/coredns:latest
+    container_name: coredns
+    command: -conf /etc/coredns/Corefile -dns.port 53
+    restart: always
+    ports:
+      - $TAILSCALE_IP:53:53
+      - $TAILSCALE_IP:53:53/udp
+      - 8000:8080
+    volumes:
+      - /home/ebenezer/coredns/Corefile:/etc/coredns/Corefile
+      - /home/ebenezer/coredns/db.home.local:/etc/coredns/db.home.local

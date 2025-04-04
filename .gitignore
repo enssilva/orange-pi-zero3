@@ -1,0 +1,6 @@
+.*
+!.gitignore
+files/*.crt
+files/*.csr
+files/*.key
+ansible_collections

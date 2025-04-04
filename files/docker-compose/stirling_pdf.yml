@@ -1,0 +1,40 @@
+name: stirling-pdf
+
+services:
+  stirling-pdf:
+    image: docker.stirlingpdf.com/stirlingtools/stirling-pdf:0.41.0
+    volumes:
+      - stirling-trainingdata:/usr/share/tessdata # Required for extra OCR languages
+      - stirling-extraconfigs:/configs
+      - stirling-customfiles:/customFiles/
+      - stirling-logs:/logs/
+      - stirling-pipeline:/pipeline/
+    environment:
+      - DOCKER_ENABLE_SECURITY=false
+      - LANGS=en_US
+      - TZ=America/Sao_Paulo
+    labels:
+      - traefik.http.routers.stirling.entrypoints=websecure
+      - traefik.http.routers.stirling.rule=Host(`pdf.home.local`)
+      - traefik.http.routers.stirling.tls=true
+      - traefik.http.routers.stirling.service=stirling
+      - traefik.http.services.stirling.loadbalancer.server.port=8080
+    networks:
+      - traefik
+
+networks:
+  traefik:
+    name: traefik
+    external: true
+
+volumes:
+  stirling-trainingdata:
+    name: stirling-trainingdata
+  stirling-extraconfigs:
+    name: stirling-extraconfigs
+  stirling-customfiles:
+    name: stirling-customfiles
+  stirling-logs:
+    name: stirling-logs
+  stirling-pipeline:
+    name: stirling-pipeline
