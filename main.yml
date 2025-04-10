@@ -5,6 +5,18 @@
   vars_files:
     - vars/main.yml
   tasks:
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - util-linux-extra
+        state: present
+      tags: timezone
+
+    - name: Set timezone to Brazil
+      community.general.timezone:
+        name: America/Sao_Paulo
+      tags: timezone
+
     - name: Get all files in /etc/ssh/sshd_config.d
       ansible.builtin.find:
         path: /etc/ssh/sshd_config.d
